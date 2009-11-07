@@ -13,7 +13,7 @@ require 'nkf'
 
 class Growl
   def notify(title, message=[], icon_path=nil, app_icon=nil)
-    command = "/usr/local/bin/growlnotify '#{title}' -m '"
+    command = "growlnotify '#{title}' -m '"
     message.each do |msg|
       command += "#{msg}\n"
     end

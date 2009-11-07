@@ -3,7 +3,13 @@
 This script pop-ups new mail notifications using growlnotify command.
 
 
-= DEPENDENCY
+= Requirement
+
+Growl as well as growlnotify command is installed.
+You may have to set PATH to growlnotify.
+
+
+= Dependency
 
 Requires the following Ruby libraries:
     highline
