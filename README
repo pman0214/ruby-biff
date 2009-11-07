@@ -1,0 +1,22 @@
+= Script "ruby-biff"
+
+This script pop-ups new mail notifications using growlnotify command.
+
+
+= DEPENDENCY
+
+Requires the following Ruby libraries:
+    highline
+
+You can install them using gem:
+    $ sudo gem install highline
+
+
+= How to use
+
+Just execute the following command:
+
+    $ ruby /path/to/ruby-biff
+
+You have to enter some information for the first time.
+These configuration is stored to $HOME/.biff/config.yml.

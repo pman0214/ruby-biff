@@ -1,0 +1,211 @@
+#!/usr/bin/ruby
+# -*- coding: utf-8 -*-
+#
+# biff.rb
+#
+
+require 'rubygems'
+require 'net/pop'
+require 'highline'
+require 'base64'
+require 'nkf'
+
+
+class Growl
+  def notify(title, message=[], icon_path=nil, app_icon=nil)
+    command = "/usr/local/bin/growlnotify '#{title}' -m '"
+    message.each do |msg|
+      command += "#{msg}\n"
+    end
+    command += "'"
+
+    if icon_path
+      command += " -i #{icon_path}"
+    end
+    if app_icon
+      command += " -a #{app_icon}"
+    end
+
+    system("#{command}")
+    system("date")
+    print "#{command}\n"
+  end
+end
+
+
+class Account
+  DEFAULT_PORT          = 110
+  DEFAULT_MAX_COUNT     = 3
+
+  attr_reader :host, :port, :user, :pass, :cnt
+  
+  @host         = ""
+  @port         = ""
+  @user         = ""
+  @pass         = ""
+  @cnt          = ""
+
+  #--------------------------------------------------
+  def initialize(config_path, yml_file)
+    @config_path = config_path
+    @yml_file = "#{config_path}/#{yml_file}"
+
+    # yamlがない場合は即return
+    if !exist?
+      return
+    end
+
+    # yamlから情報を取得する
+    File.open(@yml_file) do |io|
+      YAML.load_documents(io) do |y|
+        # POPホスト名
+        if defined? y['host']
+          @host = y['host']
+        end
+        # ポート番号
+        if defined? y['port']
+          @port = y['port']
+        else
+          # なければデフォルトを使用
+          @port = DEFAULT_PORT
+        end
+        # ユーザ名
+        if defined? y['user']
+          @user = y['user']
+        end
+        # 最大表示数
+        if defined? y['cnt']
+          @cnt = y['cnt']
+        else
+          @cnt = DEFAULT_MAX_COUNT
+        end
+        # パスワード
+        if defined? y['pass']
+          @pass = Base64.decode64(y['pass'])
+        end
+      end
+    end
+  end
+
+  #--------------------------------------------------
+  def create
+    host = HighLine.new.ask('POP host: ')
+    port = HighLine.new.ask('Port (empty to use default): ')
+    user = HighLine.new.ask('User: ')
+    pass = Base64.encode64(HighLine.new.ask('Password: ') {|q| q.echo = '*' })
+    cnt = HighLine.new.ask('Max number to be displayed (empty to use #{DEFAULT_MAX_COUNT}): ')
+
+    if !valid?(host, port, user, pass, cnt)
+      print "Invalid host, port, user, password or max count.\n"
+      return false
+    end
+
+    # ディレクトリがなければ作成する
+    if FileTest.exist?(@config_path)
+      if FileTest::directory?(@config_path)
+      else
+        print "#{@config_path} is not a directory\n"
+        exit
+      end
+    else
+      Dir.mkdir(@config_path)
+    end
+
+    # YAMLファイルを作成
+    yml = File.open(@yml_file, 'w')
+    yml.puts "host: #{host}"
+    if !port || port == ""
+      port = DEFAULT_PORT
+    end
+    yml.puts "port: #{port.to_i}"
+    yml.puts "user: #{user}"
+    yml.puts "pass: #{pass}"
+    if !cnt || cnt == ""
+      cnt = DEFAULT_MAX_COUNT
+    end
+    yml.close
+
+    @host       = host
+    @port       = port
+    @user       = user
+    @pass       = pass
+    @cnt        = cnt
+
+    return true
+  end
+
+  #--------------------------------------------------
+  def valid?(host=@host, port=@port, user=@user, pass=@pass, cnt=@cnt)
+    # portとcnt以外は必須
+    if (host == "" || user == "" || pass == "")
+      return false
+    end
+
+    # port, cntがある場合は数字
+    if !port && port != ""
+      if port !~ /^[0-9]+$/
+        return false
+      end
+    end
+    if !cnt && cnt != ""
+      if cnt !~ /^[0-9]+$/
+        return false
+      end
+    end
+
+    return true
+  end
+
+  #--------------------------------------------------
+  def exist?
+    # ファイルがない場合はfalse
+    if !FileTest.exist?(@yml_file)
+      return false
+    end
+    # パスは存在するけどファイルじゃない場合はfalse
+    if !FileTest::file?(@yml_file)
+      return false
+    end
+    return true
+  end
+end
+
+
+
+account = Account.new("#{ENV['HOME']}/.biff", "config.yml")
+if !account.exist?
+  while !account.create
+  end
+end
+
+
+mails=[]
+Net::POP3.start(account.host, account.port, account.user, account.pass)  do |pop|
+  mails = pop.mails.collect {|m| m.header}
+end
+
+if mails.empty?
+  exit
+end
+ 
+
+growl = Growl.new
+
+cnt = account.cnt
+message = []
+mails.each do |mail|
+  # cnt回表示した後にまだメールがある場合は「n more mails」
+  if cnt <= 0
+    message << ""
+    message << "#{mails.length - account.cnt} more mails..."
+    break
+  end
+
+  subject = NKF.nkf('-wLu', mail.match(/^Subject:\s+(.*)/)[1]).chop
+  from = NKF.nkf('-wLu', mail.match(/^From:\s+(.*)/)[1]).chop
+  message << "#{from}"
+  message << "#{subject}"
+  cnt -= 1
+end
+
+growl.notify("New Mail", message, nil, "Mail.app")
