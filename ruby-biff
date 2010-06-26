@@ -266,9 +266,9 @@ class MailHeader
 
   #--------------------------------------------------
   def initialize(header)
-    @subject    = NKF.nkf('-wLu', header.match(/^Subject:\s+(.*)/)[1]).chop
-    @from       = NKF.nkf('-wLu', header.match(/^From:\s+(.*)/)[1]).chop
-    @message_id = NKF.nkf('-wLu', header.match(/^Message\-Id:\s+(.*)/)[1]).chop
+    @subject    = NKF.nkf('-wLu', header.match(/^Subject:\s+(.*)/i)[1]).chop
+    @from       = NKF.nkf('-wLu', header.match(/^From:\s+(.*)/i)[1]).chop
+    @message_id = NKF.nkf('-wLu', header.match(/^Message\-Id:\s+(.*)/i)[1]).chop
   end
 end # class MailHeader
 
@@ -290,7 +290,7 @@ end
 if current_mails.empty?
   exit
 end
- 
+
 
 read_mails = ReadMails.new("#{ENV['HOME']}/.biff", "mails.yml")
 unread_headers = []
