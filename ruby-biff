@@ -9,8 +9,11 @@ require 'net/pop'
 require 'highline'
 require 'base64'
 require 'nkf'
+require 'yaml'
+require 'yaml/store'
 
 
+#======================================================================
 class Growl
   def notify(title, message=[], icon_path=nil, app_icon=nil)
     command = "growlnotify '#{title}' -m '"
@@ -33,6 +36,7 @@ class Growl
 end
 
 
+#======================================================================
 class Account
   DEFAULT_PORT          = 110
   DEFAULT_MAX_COUNT     = 3
@@ -171,6 +175,105 @@ class Account
 end
 
 
+#======================================================================
+class ReadMails
+
+  #--------------------------------------------------
+  def initialize(tmp_path, mails_file)
+    @tmp_path = tmp_path
+    @mails_file = "#{tmp_path}/#{mails_file}"
+
+    # ディレクトリが無ければ作成
+    if FileTest.exist?(@tmp_path)
+      # ディレクトリじゃないパスの場合はエラー終了
+      if !FileTest::directory?(@tmp_path)
+        return
+      end
+    else
+      Dir.mkdir(@tmp_path)
+    end
+
+    # ファイルじゃないパスが存在する場合はエラー終了
+    if !FileTest::file?(@mails_file)
+      return
+    end
+  end
+
+  #--------------------------------------------------
+  def append(message_id)
+    retrieve_mails
+    if !@mails
+      @mails = []
+    end
+    @mails << message_id
+    @mails.uniq!
+    update_mails
+  end
+
+  #--------------------------------------------------
+  def remove(message_id)
+    retrieve_mails
+    if @mails != nil
+      @mails.delete(message_id)
+    end
+    update_mails
+  end
+
+  #--------------------------------------------------
+  def unread?(message_id)
+    retrieve_mails
+    mails = @mails
+    if @mails == nil
+      return true
+    end
+    if @mails.delete(message_id) == nil
+      return true
+    else
+      return false
+    end
+  end
+
+  #--------------------------------------------------
+  def overwrite(message_ids)
+    @mails = message_ids
+    @mails.uniq!
+    update_mails
+  end
+
+  #==================================================
+  private
+  def retrieve_mails
+    mails_db = YAML::Store.new(@mails_file)
+    mails_db.transaction do
+      @mails = mails_db["mails"]
+    end
+  end
+
+  #==================================================
+  private
+  def update_mails
+    mails_db = YAML::Store.new(@mails_file)
+    mails_db.transaction do
+      mails_db["mails"] = @mails
+    end
+  end
+end # class ReadMails
+
+
+#======================================================================
+class MailHeader
+  attr_accessor :subject, :from, :message_id
+
+  #--------------------------------------------------
+  def initialize(header)
+    @subject    = NKF.nkf('-wLu', header.match(/^Subject:\s+(.*)/)[1]).chop
+    @from       = NKF.nkf('-wLu', header.match(/^From:\s+(.*)/)[1]).chop
+    @message_id = NKF.nkf('-wLu', header.match(/^Message\-Id:\s+(.*)/)[1]).chop
+  end
+end # class MailHeader
+
+
+#======================================================================
 
 account = Account.new("#{ENV['HOME']}/.biff", "config.yml")
 if !account.exist?
@@ -179,33 +282,47 @@ if !account.exist?
 end
 
 
-mails=[]
+current_mails=[]
 Net::POP3.start(account.host, account.port, account.user, account.pass)  do |pop|
-  mails = pop.mails.collect {|m| m.header}
+  current_mails = pop.mails.collect {|m| m.header}
 end
 
-if mails.empty?
+if current_mails.empty?
   exit
 end
  
 
-growl = Growl.new
+read_mails = ReadMails.new("#{ENV['HOME']}/.biff", "mails.yml")
+unread_headers = []
+message_ids = []
+current_mails.each do |m|
+  header = MailHeader.new(m)
+  message_ids << header.message_id
+  if read_mails.unread?(header.message_id)
+    unread_headers << header
+  end
+end
+read_mails.overwrite(message_ids)
+
+if unread_headers.empty?
+  exit
+end
+
 
 cnt = account.cnt
 message = []
-mails.each do |mail|
+unread_headers.each do |m|
   # cnt回表示した後にまだメールがある場合は「n more mails」
   if cnt <= 0
     message << ""
-    message << "#{mails.length - account.cnt} more mails..."
+    message << "#{unread_headers.length - account.cnt} more mails..."
     break
   end
 
-  subject = NKF.nkf('-wLu', mail.match(/^Subject:\s+(.*)/)[1]).chop
-  from = NKF.nkf('-wLu', mail.match(/^From:\s+(.*)/)[1]).chop
-  message << "#{from}"
-  message << "#{subject}"
+  message << "#{m.from}"
+  message << "#{m.subject}"
   cnt -= 1
 end
 
+growl = Growl.new
 growl.notify("New Mail", message, nil, "Mail.app")
