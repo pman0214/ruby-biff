@@ -13,6 +13,11 @@ require 'yaml'
 require 'yaml/store'
 
 
+# Constants
+CONFIG_DIR="#{ENV['HOME']}/.biff"
+CACHE_DIR="/Volumes/ramdisk/.Caches"
+
+
 #======================================================================
 class Growl
   def notify(title, message=[], icon_path=nil, app_icon=nil)
@@ -275,7 +280,7 @@ end # class MailHeader
 
 #======================================================================
 
-account = Account.new("#{ENV['HOME']}/.biff", "config.yml")
+account = Account.new(CONFIG_DIR, "config.yml")
 if !account.exist?
   while !account.create
   end
@@ -292,7 +297,7 @@ if current_mails.empty?
 end
 
 
-read_mails = ReadMails.new("#{ENV['HOME']}/.biff", "mails.yml")
+read_mails = ReadMails.new(CACHE_DIR, ".mails.yml")
 unread_headers = []
 message_ids = []
 current_mails.each do |m|
