@@ -245,6 +245,20 @@ class ReadMails
     update_mails
   end
 
+  #--------------------------------------------------
+  def enabled?
+    enb = true
+    mails_db = YAML::Store.new(@mails_file)
+    mails_db.transaction do
+      enb = mails_db["enabled"]
+    end
+    if enb == nil
+      return true
+    else
+      return enb
+    end
+  end
+
   #==================================================
   private
   def retrieve_mails
@@ -298,6 +312,10 @@ end
 
 
 read_mails = ReadMails.new(CACHE_DIR, ".mails.yml")
+# 無効化されているときは終了
+if ! read_mails.enabled?
+  exit
+end
 unread_headers = []
 message_ids = []
 current_mails.each do |m|
@@ -312,7 +330,6 @@ read_mails.overwrite(message_ids)
 if unread_headers.empty?
   exit
 end
-
 
 cnt = account.cnt
 message = []
